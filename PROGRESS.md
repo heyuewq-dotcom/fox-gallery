@@ -1,0 +1,19 @@
+# Fox Gallery 进度
+
+## 接管审计（2026-09-28）
+- 原分支 main；接手 HEAD `1726305`，前一提交 `0294643`，无本地改动。
+- 开发分支 `codex/fox-gallery-v0.1`；原 ZIP 和 README 已读，包内 CODEX_BRIEF/PROGRESS/HTML/JSON/CSV 已检查。
+- 300 manifest 记录，295 个独立 SHA-256，3 个重复组（3、2、3 个来源）。
+- 297 WebP，逐一解码校验通过。无 ZIP 重复条目；有缩略图路径的 297 条全部存在。
+- 少的 3 条是 `pelican_29.svg`、`pelican_airplane_21.svg`、`pelican_cycling_animated.svg`，thumb 为空；不是解压覆盖或路径冲突。
+- 原图不在包内；预览不代表原图备份完成。迁移背景：约 1975 图片、1109 AI 标记、300/1109（27.05%），来自用户交接，未重新访问 ChatGPT Library 验证。
+- 已添加启动服务、审计脚本、开发计划和长期数据原则。解压目录 Git 忽略，不复制 297 张图片进历史。
+
+## 当前进行中
+接管提交后，依次实现核心图库、批量、IndexedDB、文件导入、manifest 导入。
+
+## 未完成 / 已知限制
+v0.1 功能尚待实现；Starter 没有原图，3 个 SVG 没有预览。
+
+## 最近提交
+本阶段之前：`1726305`。每次阶段提交更新前序 ID；当前准确 HEAD 使用 `git log -1 --oneline` 查看。
