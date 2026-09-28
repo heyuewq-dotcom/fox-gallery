@@ -10,3 +10,9 @@
 - 移动优先，单手可操作，懒加载和受限 DOM；不做后台管理风格。
 - 每个独立阶段测试、更新 PROGRESS.md 并 commit；先修错误再继续。v0.1 完成后停止扩展。
 - Forge 仅预留文件来源接口，后台监听留给后续桌面版。
+
+## 当前接手点（2026-09-28）
+
+v0.1 功能与本地验收已完成；先读 PROGRESS.md 的已知限制。当前技术栈为无运行时依赖的原生 ES modules + IndexedDB，Node.js 仅用于本地静态服务和开发测试。运行 `npm start`，开发检查 `npm test`、`npm run test:browser`。
+
+远端 GitHub 集成写入返回 403，代码尚未推送。所有阶段提交在 `codex/fox-gallery-v0.1`，完整历史在交付 Git bundle。下一次先恢复仓库写权限并推送已有分支，不要重建项目、重做已完成阶段或清理原始 Starter。
