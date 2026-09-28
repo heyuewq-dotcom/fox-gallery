@@ -6,7 +6,16 @@
   "scripts": {
     "start": "node scripts/serve.mjs",
     "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser.mjs && node tests/acceptance.mjs",
+    "format": "prettier --write src scripts tests index.html schema package.json *.md",
+    "format:check": "prettier --check src scripts tests index.html schema package.json *.md",
     "audit:starter": "node scripts/audit-starter.mjs"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "prettier": "3.9.9"
+  }
 }

@@ -1,0 +1,21 @@
+name: Fox Gallery checks
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: python -m zipfile -e Fox_Gallery_Codex_Starter_300.zip local-data/starter
+      - run: npm run audit:starter && npm test && npm run format:check
+      - run: npx playwright install --with-deps chromium
+      - name: Browser acceptance
+        run: |
+          node scripts/serve.mjs &
+          node -e "const wait=async()=>{for(let i=0;i<50;i++){try{await fetch('http://localhost:4173');return;}catch{await new Promise(r=>setTimeout(r,100));}}process.exit(1);};wait();"
+          npm run test:browser
