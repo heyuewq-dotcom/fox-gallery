@@ -1,4 +1,5 @@
 import {openStore} from './store.js';
+import {makeBackup,validateBackup,restoreSummary} from './backup.js';
 import {emptyUser,categoryOf,isDuplicate,parseTags,filterImages,normalizeRecord,mergeImage,userPatch} from './model.js';
 
 const $ = id => document.getElementById(id);
@@ -49,7 +50,7 @@ function render() {
 }
 function toggleSelect(hash){state.selected.has(hash)?state.selected.delete(hash):state.selected.add(hash);render();}
 async function saveUsers(hashes,patch) {
-  try {const rows=hashes.map(sha256=>({...userPatch(userFor(sha256),patch),sha256,updatedAt:new Date().toISOString()}));for(const row of rows)delete row.addTags;await store.putMany('users',rows);for(const row of rows)state.users.set(row.sha256,row);refreshCategories();render();return true;}
+  try {const rows=await store.updateUsers(hashes,patch);for(const row of rows)state.users.set(row.sha256,row);refreshCategories();render();return true;}
   catch(error){message(`保存失败：${error.message}。请备份现有用户数据。`,true);return false;}
 }
 async function showDetail(hash) {
@@ -82,6 +83,13 @@ $('batch-cancel').onclick=()=>$('batch-dialog').close();
 $('batch-form').onsubmit=async e=>{e.preventDefault();const value=$('batch-value').value.trim();if(!value)return;const patch=batchMode==='tags'?{addTags:parseTags(value)}:{category:value};if(await saveUsers([...state.selected],patch)){$('batch-dialog').close();message(`已更新 ${state.selected.size} 张图片`);}};
 $('select-page').onclick=()=>{for(const i of filtered().slice(state.page*PAGE_SIZE,(state.page+1)*PAGE_SIZE))state.selected.add(i.sha256);render();};
 $('clear-selection').onclick=()=>{state.selected.clear();state.selecting=false;render();};
-for(const id of ['backup','pick-files','pick-directory','pick-manifest','pick-restore','reconnect'])$(id).onclick=()=>message('此功能正在下一阶段接入。');
+function downloadJSON(data,name){const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=element('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}
+$('backup').onclick=async()=>{try{downloadJSON(makeBackup(await store.all('users')),`fox-gallery-users-${new Date().toISOString().slice(0,10)}.json`);message('用户数据备份已导出（不包含原图）。');}catch(e){message(e.message,true);}};
+let pendingRestore=[];
+$('pick-restore').onclick=()=>$('restore-input').click();
+$('restore-input').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;try{if(file.size>20*1024*1024)throw new Error('备份超过 20 MB 限制');pendingRestore=validateBackup(JSON.parse(await file.text()));const summary=restoreSummary(pendingRestore,state.images,state.users);$('restore-summary').textContent=`共 ${summary.total} 条，匹配图片 ${summary.matched} 条，孤立用户数据 ${summary.orphans} 条，已有用户记录 ${summary.conflicts} 条。`;$('restore-mode').value='keep';$('restore-dialog').showModal();}catch(e){$('import-report').textContent=`恢复校验失败：${e.message}`;}};
+$('restore-cancel').onclick=()=>{$('restore-dialog').close();pendingRestore=[];};
+$('restore-apply').onclick=async()=>{const button=$('restore-apply');button.disabled=true;try{await store.put('settings',{id:'before-last-restore',backup:makeBackup(await store.all('users'))});const result=await store.restoreUsers(pendingRestore,$('restore-mode').value==='replace');state.users=new Map((await store.all('users')).map(u=>[u.sha256,u]));refreshCategories();render();$('restore-dialog').close();$('import-report').textContent=`已恢复 ${result.restored} 条，保留当前记录 ${result.kept} 条。`;pendingRestore=[];}catch(e){$('restore-summary').textContent=`恢复失败：${e.message}`;}finally{button.disabled=false;}};
+for(const id of ['pick-files','pick-directory','pick-manifest','reconnect'])$(id).onclick=()=>message('此功能正在下一阶段接入。');
 try {store=await openStore();for(const i of await store.all('images'))state.images.set(i.sha256,i);for(const u of await store.all('users'))state.users.set(u.sha256,u);refreshCategories();render();if(!state.images.size)await loadStarter();}
 catch(e){message(`无法启动存储：${e.message}`,true);}
