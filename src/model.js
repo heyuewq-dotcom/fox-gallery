@@ -4,6 +4,9 @@ export const emptyUser = () => ({favorite:false,tags:[],category:'',note:''});
 export const parseTags = text => [...new Set(text.split(/[,，\n]/).map(t=>t.trim()).filter(Boolean))];
 export const categoryOf = (image,user) => user?.category || image.category || '待识别';
 export const isDuplicate = image => image.sources.length > 1 || Boolean(image.duplicateGroup);
+export function userPatch(user,patch) {
+  return {...emptyUser(),...user,...patch,...(patch.addTags ? {tags:[...new Set([...(user?.tags || []),...patch.addTags])]} : {})};
+}
 
 export function normalizeRecord(row, context = {}) {
   if (!row || !HASH.test(row.sha256 || '')) throw new Error('缺少有效 SHA-256');

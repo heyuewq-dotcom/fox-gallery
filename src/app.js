@@ -1,5 +1,5 @@
 import {openStore} from './store.js';
-import {emptyUser,categoryOf,isDuplicate,parseTags,filterImages,normalizeRecord,mergeImage} from './model.js';
+import {emptyUser,categoryOf,isDuplicate,parseTags,filterImages,normalizeRecord,mergeImage,userPatch} from './model.js';
 
 const $ = id => document.getElementById(id);
 const state = {images:new Map(),users:new Map(),selected:new Set(),filter:'all',page:0,selecting:false,active:null,busy:false};
@@ -49,7 +49,7 @@ function render() {
 }
 function toggleSelect(hash){state.selected.has(hash)?state.selected.delete(hash):state.selected.add(hash);render();}
 async function saveUsers(hashes,patch) {
-  try {const rows=hashes.map(sha256=>({...userFor(sha256),...patch,sha256,updatedAt:new Date().toISOString()}));await store.putMany('users',rows);for(const row of rows)state.users.set(row.sha256,row);refreshCategories();render();return true;}
+  try {const rows=hashes.map(sha256=>({...userPatch(userFor(sha256),patch),sha256,updatedAt:new Date().toISOString()}));for(const row of rows)delete row.addTags;await store.putMany('users',rows);for(const row of rows)state.users.set(row.sha256,row);refreshCategories();render();return true;}
   catch(error){message(`保存失败：${error.message}。请备份现有用户数据。`,true);return false;}
 }
 async function showDetail(hash) {
@@ -74,6 +74,14 @@ $('detail-form').onsubmit=async e=>{e.preventDefault();if(await saveUsers([state
 $('starter').onclick=loadStarter;$('load-starter').onclick=loadStarter;
 $('import-open').onclick=()=>$('import-dialog').showModal();$('import-close').onclick=()=>$('import-dialog').close();
 $('select-mode').onclick=()=>{state.selecting=!state.selecting;if(!state.selecting)state.selected.clear();render();};
-for(const id of ['backup','pick-files','pick-directory','pick-manifest','pick-restore','reconnect','batch-category','batch-tags','batch-favorite','select-page','clear-selection'])$(id).onclick=()=>message('此功能正在下一阶段接入。');
+let batchMode='category';
+function openBatch(mode){if(!state.selected.size){message('请先选择图片');return;}batchMode=mode;$('batch-title').textContent=mode==='tags'?'批量添加标签':'批量设置分类';$('batch-description').textContent=`将修改 ${state.selected.size} 张图片。${mode==='tags'?'现有标签将保留。':'只改变所选图片的分类。'}`;$('batch-value').value='';$('batch-value').maxLength=mode==='tags'?2000:120;$('batch-label').textContent=mode==='tags'?'标签（逗号分隔）':'分类名称';$('batch-dialog').showModal();}
+$('batch-category').onclick=()=>openBatch('category');$('batch-tags').onclick=()=>openBatch('tags');
+$('batch-favorite').onclick=async()=>{if(!state.selected.size)return message('请先选择图片');if(await saveUsers([...state.selected],{favorite:true}))message(`已收藏 ${state.selected.size} 张图片`);};
+$('batch-cancel').onclick=()=>$('batch-dialog').close();
+$('batch-form').onsubmit=async e=>{e.preventDefault();const value=$('batch-value').value.trim();if(!value)return;const patch=batchMode==='tags'?{addTags:parseTags(value)}:{category:value};if(await saveUsers([...state.selected],patch)){$('batch-dialog').close();message(`已更新 ${state.selected.size} 张图片`);}};
+$('select-page').onclick=()=>{for(const i of filtered().slice(state.page*PAGE_SIZE,(state.page+1)*PAGE_SIZE))state.selected.add(i.sha256);render();};
+$('clear-selection').onclick=()=>{state.selected.clear();state.selecting=false;render();};
+for(const id of ['backup','pick-files','pick-directory','pick-manifest','pick-restore','reconnect'])$(id).onclick=()=>message('此功能正在下一阶段接入。');
 try {store=await openStore();for(const i of await store.all('images'))state.images.set(i.sha256,i);for(const u of await store.all('users'))state.users.set(u.sha256,u);refreshCategories();render();if(!state.images.size)await loadStarter();}
 catch(e){message(`无法启动存储：${e.message}`,true);}
