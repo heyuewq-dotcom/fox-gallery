@@ -1,1 +1,20 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>狐之图库</title><h1>狐之图库 Fox Gallery</h1><p>接管整理完成，v0.1 开发中。</p><a href="local-data/starter/index.html">打开原始 Starter 预览</a></html>
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f8f7f4"><title>狐之图库 · Fox Gallery</title><link rel="stylesheet" href="src/style.css"></head>
+<body>
+<header class="top"><a class="brand" href="./"><span class="fox">🦊</span><span>狐之图库<small>FOX GALLERY</small></span></a><div class="top-actions"><button id="backup">备份数据</button><button id="import-open" class="primary">＋ 导入图片</button></div></header>
+<main>
+ <section class="intro"><div><p class="eyebrow">YOUR LOCAL COLLECTION</p><h1>收藏每一份灵感。</h1><p class="muted">留在本地，随时重逢。</p></div><div class="library-count"><strong id="total">0</strong><span>张独立图片</span></div></section>
+ <section class="toolbar" aria-label="搜索与筛选"><label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索名称、标签、备注、SHA-256…" aria-label="搜索图库"></label><select id="category-filter" aria-label="筛选分类"><option value="">全部分类</option></select><button id="select-mode" aria-pressed="false">多选</button></section>
+ <nav class="filters" aria-label="图库视图"><button data-filter="all" aria-pressed="true">全部图片</button><button data-filter="favorite" aria-pressed="false">♡ 收藏</button><button data-filter="duplicate" aria-pressed="false">⧉ 重复图</button><span id="result-count" class="muted"></span></nav>
+ <div id="status" role="status" aria-live="polite"></div>
+ <section id="grid" class="grid" aria-label="图片网格"></section>
+ <div id="empty" class="empty" hidden><span>◇</span><h2>这里还有更多可能</h2><p>导入本地图片，或调整搜索和筛选。</p><button id="starter">载入 Starter 验证图库</button></div>
+ <div class="pager"><button id="previous">上一页</button><span id="page-label"></span><button id="next">下一页</button></div>
+ <section id="batch" class="batch" hidden aria-label="批量编辑"><strong id="selection-count"></strong><button id="select-page">选择本页</button><button id="batch-category">分类</button><button id="batch-tags">添加标签</button><button id="batch-favorite">收藏</button><button id="clear-selection">完成</button></section>
+</main>
+<footer>FOX GALLERY <span>本地优先 · 原图与重复图始终保留</span></footer>
+<dialog id="detail" class="detail"><button class="close" id="detail-close" aria-label="关闭详情">×</button><div class="preview"><img id="detail-image" alt=""><p id="preview-hint"></p></div><div class="detail-body"><p class="eyebrow">IMAGE DETAILS</p><h2 id="detail-name"></h2><form id="detail-form"><label class="check"><input id="favorite" type="checkbox">收藏这张图片</label><label>分类<input id="edit-category" list="categories" maxlength="120" placeholder="待识别"></label><datalist id="categories"></datalist><label>标签<input id="edit-tags" maxlength="2000" placeholder="用逗号分隔，例如：角色, 灵感"></label><label>备注<textarea id="edit-note" rows="4" maxlength="20000" placeholder="写下图片背后的故事…"></textarea></label><button class="primary" type="submit">保存更改</button><span id="save-hint" role="status"></span></form><dl id="metadata"></dl><details><summary>文件来源与重复信息</summary><ul id="sources"></ul></details></div></dialog>
+<dialog id="import-dialog" class="import-dialog"><div class="dialog-heading"><h2>将灵感带进图库</h2><button id="import-close" aria-label="关闭导入">×</button></div><p class="muted">原图保留在你的文件夹中。也可以将图片拖入页面。</p><div class="import-options"><button id="pick-files">选择图片</button><button id="pick-directory">选择文件夹</button><button id="pick-manifest">导入 manifest</button><button id="pick-restore">恢复用户备份</button><button id="load-starter">载入 Starter</button><button id="reconnect">重新连接文件夹</button></div><p class="muted">普通文件选择只保存缩略图；刷新后查看原图需重新选择文件。支持的浏览器可保存文件夹授权，使用“重新连接文件夹”恢复访问。JSON 备份不包含原图。</p><progress id="import-progress" value="0" max="1"></progress><pre id="import-report" role="status">等待导入</pre><input id="files-input" type="file" accept="image/*" multiple hidden><input id="directory-input" type="file" webkitdirectory multiple hidden><input id="manifest-input" type="file" accept=".json,.csv" multiple hidden><input id="restore-input" type="file" accept="application/json,.json" hidden></dialog>
+<script type="module" src="src/app.js"></script>
+</body></html>
