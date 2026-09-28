@@ -2,6 +2,7 @@ import {openStore} from './store.js';
 import {makeBackup,validateBackup,restoreSummary} from './backup.js';
 import {importFiles,directoryEntries,droppedEntries,reportStats} from './importer.js';
 import {hashFile} from './media.js';
+import {importSelection,importManifest,parseManifest} from './manifest.js';
 import {emptyUser,categoryOf,isDuplicate,parseTags,filterImages,normalizeRecord,mergeImage,userPatch} from './model.js';
 
 const $ = id => document.getElementById(id);
@@ -70,10 +71,11 @@ async function showDetail(hash) {
   }catch(e){if(state.active===hash)$('preview-hint').textContent=`显示缩略图：${e.message}`;}
 }
 async function loadStarter() {
-  try {message('正在载入 Starter…');const response=await fetch('local-data/starter/manifest.json');if(!response.ok)throw new Error('请先按 README 解压 Starter ZIP');const records=await response.json();
-    for(const row of records){const image=normalizeRecord(row,{origin:'starter',thumbnail:row.thumb?'local-data/starter/thumbs/'+encodeURIComponent(row.thumb):''});state.images.set(image.sha256,mergeImage(state.images.get(image.sha256),image));}
-    await store.putMany('images',[...state.images.values()]);refreshCategories();render();message(`Starter 已载入：${records.length} 条来源，${state.images.size} 张独立图片。3 条 SVG 没有缩略图。`);
-  }catch(e){message(e.message,true);}
+  if(state.busy)return message('请等待当前导入完成');state.busy=true;
+  try {message('正在载入 Starter…');const response=await fetch('local-data/starter/manifest.json');if(!response.ok)throw new Error('请先按 README 解压 Starter ZIP，或选择本地图片');const records=parseManifest(await response.text());
+    const stats=await importManifest(records,{store,thumbnailURL:row=>row.thumb?'local-data/starter/thumbs/'+encodeURIComponent(row.thumb):'',onImported:image=>state.images.set(image.sha256,image)});
+    refreshCategories();render();$('import-report').textContent=reportStats(stats);message(`Starter 已载入：${records.length} 条来源，${state.images.size} 张独立图片。3 条 SVG 没有缩略图。`);
+  }catch(e){message(e.message,true);$('import-report').textContent=e.message;}finally{state.busy=false;}
 }
 $('search').oninput=()=>{state.page=0;render();};$('category-filter').onchange=()=>{state.page=0;render();};
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;state.page=0;render();});
@@ -102,7 +104,7 @@ $('restore-apply').onclick=async()=>{const button=$('restore-apply');button.disa
 async function runImport(entries,total=0){
  if(state.busy){message('请等待当前导入完成',true);return;}
  state.busy=true;importController=new AbortController();if(!$('import-dialog').open)$('import-dialog').showModal();$('import-progress').value=0;$('import-progress').max=total||1;
- try{const stats=await importFiles(entries,{store,signal:importController.signal,onProgress:s=>{$('import-report').textContent=reportStats(s);if(total)$('import-progress').value=s.processed;else $('import-progress').removeAttribute('value');},onImported:(image,file)=>{state.images.set(image.sha256,image);sessionFiles.set(image.sha256,file);if(objectUrls.has(image.sha256)){URL.revokeObjectURL(objectUrls.get(image.sha256));objectUrls.delete(image.sha256);}}});$('import-progress').max=1;$('import-progress').value=1;message(`导入结束：新增 ${stats.added}，已存在 ${stats.existing}，错误 ${stats.errors}`);}
+ try{const stats=await importSelection(entries,{store,signal:importController.signal,onProgress:s=>{$('import-report').textContent=reportStats(s);if(total){$('import-progress').max=Math.max(total,s.processed);$('import-progress').value=s.processed;}else $('import-progress').removeAttribute('value');},onImported:(image,file)=>{state.images.set(image.sha256,image);if(file)sessionFiles.set(image.sha256,file);if(objectUrls.has(image.sha256)){URL.revokeObjectURL(objectUrls.get(image.sha256));objectUrls.delete(image.sha256);}}});$('import-progress').max=1;$('import-progress').value=1;message(`导入结束：新增 ${stats.added}，已存在 ${stats.existing}，错误 ${stats.errors}`);}
  catch(e){$('import-report').textContent+=`\n导入中止：${e.message}。已成功写入的记录保留。`;message(e.message,true);}
  finally{state.busy=false;refreshCategories();render();}
 }
@@ -116,6 +118,7 @@ window.addEventListener('dragenter',e=>{if(e.dataTransfer.types.includes('Files'
 window.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();});
 window.addEventListener('dragleave',()=>{if(--dragDepth<=0)document.body.classList.remove('dragging');});
 window.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');const items=[...e.dataTransfer.items].filter(i=>i.kind==='file').map(i=>({entry:i.webkitGetAsEntry?.(),file:i.getAsFile()}));runImport(droppedEntries(items));});
-$('pick-manifest').onclick=()=>message('manifest 导入正在下一阶段接入。');
+$('pick-manifest').onclick=()=>$('manifest-input').click();
+$('manifest-input').onchange=e=>{const entries=[...e.target.files].map(file=>({file,path:file.name}));e.target.value='';runImport(entries);};
 try {store=await openStore();for(const i of await store.all('images'))state.images.set(i.sha256,i);for(const u of await store.all('users'))state.users.set(u.sha256,u);refreshCategories();render();if(!state.images.size)await loadStarter();}
 catch(e){message(`无法启动存储：${e.message}`,true);}

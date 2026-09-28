@@ -1,0 +1,6 @@
+{
+ "$schema":"https://json-schema.org/draft/2020-12/schema",
+ "title":"Fox Gallery manifest v1 (legacy array also supported)",
+ "oneOf":[{"$ref":"#/$defs/images"},{"type":"object","required":["schemaVersion","images"],"properties":{"schemaVersion":{"const":1},"images":{"$ref":"#/$defs/images"}}}],
+ "$defs":{"images":{"type":"array","maxItems":100000,"items":{"type":"object","required":["filename","sha256"],"properties":{"filename":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[a-fA-F0-9]{64}$"},"width":{"type":"number","minimum":0},"height":{"type":"number","minimum":0},"size_bytes":{"type":"number","minimum":0},"category":{"type":"string"},"thumb":{"type":"string"},"original_rel":{"type":"string"}}}}}
+}
