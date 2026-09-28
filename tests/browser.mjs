@@ -6,10 +6,12 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser=await chromium.launch({headless:true,...(process.env.BROWSER_PATH?{executablePath:process.env.BROWSER_PATH}:{})});
 const context=await browser.newContext({viewport:{width:1440,height:1000}});
 const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+page.setDefaultTimeout(15000);
 try{
 await page.goto('http://localhost:4173');
 await page.waitForFunction(()=>document.querySelector('#total').textContent==='295');
 assert.equal(await page.locator('.card').count(),60);
+console.log('starter loaded');
 await page.locator('.image-button').first().click();
 await page.locator('#edit-note').fill('persistent test note');await page.locator('#edit-tags').fill('fox, verified');await page.locator('#edit-category').fill('我的分类');await page.locator('#favorite').check();
 await page.locator('#detail-form button[type=submit]').click();await page.locator('#save-hint').filter({hasText:'已保存'}).waitFor();
@@ -17,6 +19,17 @@ await page.reload();await page.locator('.card').first().waitFor();await page.loc
 await page.locator('.image-button').click();assert.equal(await page.locator('#edit-category').inputValue(),'我的分类');assert.equal(await page.locator('#edit-note').inputValue(),'persistent test note');await page.locator('#detail-close').click();
 await page.locator('#search').fill('');await page.locator('[data-filter=duplicate]').click();assert.equal(await page.locator('.card').count(),3);
 await page.locator('[data-filter=all]').click();
+console.log('editing tested');
+const png=Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=18;c.height=12;c.getContext('2d').fillRect(0,0,18,12);return c.toDataURL('image/png').split(',')[1];}),'base64');
+await page.locator('#import-open').click();
+await page.locator('#files-input').setInputFiles([{name:'local-one.png',mimeType:'image/png',buffer:png},{name:'local-renamed.png',mimeType:'image/png',buffer:png},{name:'broken.png',mimeType:'image/png',buffer:Buffer.from('invalid')}]);
+await page.waitForFunction(()=>document.querySelector('#import-report').textContent.includes('已处理 3'));
+console.log('local import completed',await page.locator('#import-report').textContent());
+assert.match(await page.locator('#import-report').textContent(),/新增 1 · 已存在 1/);assert.match(await page.locator('#import-report').textContent(),/错误 1/);
+await page.locator('#import-close').click();await page.locator('#search').fill('local-renamed');assert.equal(await page.locator('.card').count(),1);await page.locator('.image-button').click();
+await page.waitForFunction(()=>document.querySelector('#preview-hint').textContent==='本地原图');await page.locator('#edit-note').fill('local keep');await page.locator('#detail-form button[type=submit]').click();await page.locator('#save-hint').filter({hasText:'已保存'}).waitFor();await page.locator('#detail-close').click();
+await page.locator('#import-open').click();await page.locator('#files-input').setInputFiles({name:'local-third-name.png',mimeType:'image/png',buffer:png});await page.waitForFunction(()=>document.querySelector('#import-report').textContent.includes('已处理 1'));await page.locator('#import-close').click();
+await page.reload();await page.locator('.card').first().waitFor();await page.locator('#search').fill('local keep');assert.equal(await page.locator('.card').count(),1);await page.locator('.image-button').click();assert.equal(await page.locator('#edit-note').inputValue(),'local keep');await page.locator('#detail-close').click();await page.locator('#search').fill('');
 const migration=await page.evaluate(async()=>{
  const {openStore}=await import('/src/store.js');
  const name='fox-migration-test';

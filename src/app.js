@@ -1,5 +1,7 @@
 import {openStore} from './store.js';
 import {makeBackup,validateBackup,restoreSummary} from './backup.js';
+import {importFiles,directoryEntries,droppedEntries,reportStats} from './importer.js';
+import {hashFile} from './media.js';
 import {emptyUser,categoryOf,isDuplicate,parseTags,filterImages,normalizeRecord,mergeImage,userPatch} from './model.js';
 
 const $ = id => document.getElementById(id);
@@ -7,6 +9,8 @@ const state = {images:new Map(),users:new Map(),selected:new Set(),filter:'all',
 const PAGE_SIZE=60;
 let store;
 const objectUrls = new Map();
+const sessionFiles=new Map();
+let detailUrl=null,importController=null;
 function message(text,error=false) { $('status').textContent=text; $('status').classList.toggle('error',error); }
 function element(tag,text,className) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e;}
 function userFor(hash) {return state.users.get(hash) || emptyUser();}
@@ -54,12 +58,16 @@ async function saveUsers(hashes,patch) {
   catch(error){message(`保存失败：${error.message}。请备份现有用户数据。`,true);return false;}
 }
 async function showDetail(hash) {
+  if(detailUrl){URL.revokeObjectURL(detailUrl);detailUrl=null;}
   state.active=hash;const image=state.images.get(hash),user=userFor(hash);$('detail-name').textContent=image.filename;$('detail-image').removeAttribute('src');$('detail-image').alt=image.filename;
   $('preview-hint').textContent='缩略图预览 · 原图仍保留在本地';$('favorite').checked=user.favorite;$('edit-category').value=categoryOf(image,user);$('edit-tags').value=user.tags.join(', ');$('edit-note').value=user.note;$('save-hint').textContent='';
   $('metadata').replaceChildren();for(const [label,value] of [['SHA-256',hash],['尺寸',`${image.width} × ${image.height}`],['文件大小',`${(image.fileSize/1024).toFixed(1)} KB`],['MIME',image.mimeType||'未提供'],['来源',image.source],['重复组',image.duplicateGroup|| (isDuplicate(image)?'相同内容的多个来源':'无')]])$('metadata').append(element('dt',label),element('dd',value));
   $('sources').replaceChildren(...image.sources.map(s=>element('li',`${s.path} · ${s.origin}${s.batch?' · '+s.batch:''}`)));
   if(!$('detail').open)$('detail').showModal();
   const url=await thumbnail(image);if(state.active===hash&&url)$('detail-image').src=url;
+  try{let file=sessionFiles.get(hash);if(!file){const asset=await store.get('assets',hash);if(asset?.handle){if(await asset.handle.queryPermission({mode:'read'})==='granted')file=await asset.handle.getFile();}}
+    if(file){if(await hashFile(file)!==hash)throw new Error('源文件内容已改变，请重新导入');if(state.active===hash){detailUrl=URL.createObjectURL(file);$('detail-image').src=detailUrl;$('preview-hint').textContent='本地原图';}}
+  }catch(e){if(state.active===hash)$('preview-hint').textContent=`显示缩略图：${e.message}`;}
 }
 async function loadStarter() {
   try {message('正在载入 Starter…');const response=await fetch('local-data/starter/manifest.json');if(!response.ok)throw new Error('请先按 README 解压 Starter ZIP');const records=await response.json();
@@ -70,7 +78,8 @@ async function loadStarter() {
 $('search').oninput=()=>{state.page=0;render();};$('category-filter').onchange=()=>{state.page=0;render();};
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;state.page=0;render();});
 $('previous').onclick=()=>{state.page--;render();};$('next').onclick=()=>{state.page++;render();window.scrollTo({top:0});};
-$('detail-close').onclick=()=>{$('detail').close();state.active=null;};
+$('detail-close').onclick=()=>$('detail').close();
+$('detail').addEventListener('close',()=>{state.active=null;if(detailUrl)URL.revokeObjectURL(detailUrl);detailUrl=null;});
 $('detail-form').onsubmit=async e=>{e.preventDefault();if(await saveUsers([state.active],{favorite:$('favorite').checked,category:$('edit-category').value.trim(),tags:parseTags($('edit-tags').value),note:$('edit-note').value}))$('save-hint').textContent='已保存';};
 $('starter').onclick=loadStarter;$('load-starter').onclick=loadStarter;
 $('import-open').onclick=()=>$('import-dialog').showModal();$('import-close').onclick=()=>$('import-dialog').close();
@@ -90,6 +99,23 @@ $('pick-restore').onclick=()=>$('restore-input').click();
 $('restore-input').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;try{if(file.size>20*1024*1024)throw new Error('备份超过 20 MB 限制');pendingRestore=validateBackup(JSON.parse(await file.text()));const summary=restoreSummary(pendingRestore,state.images,state.users);$('restore-summary').textContent=`共 ${summary.total} 条，匹配图片 ${summary.matched} 条，孤立用户数据 ${summary.orphans} 条，已有用户记录 ${summary.conflicts} 条。`;$('restore-mode').value='keep';$('restore-dialog').showModal();}catch(e){$('import-report').textContent=`恢复校验失败：${e.message}`;}};
 $('restore-cancel').onclick=()=>{$('restore-dialog').close();pendingRestore=[];};
 $('restore-apply').onclick=async()=>{const button=$('restore-apply');button.disabled=true;try{await store.put('settings',{id:'before-last-restore',backup:makeBackup(await store.all('users'))});const result=await store.restoreUsers(pendingRestore,$('restore-mode').value==='replace');state.users=new Map((await store.all('users')).map(u=>[u.sha256,u]));refreshCategories();render();$('restore-dialog').close();$('import-report').textContent=`已恢复 ${result.restored} 条，保留当前记录 ${result.kept} 条。`;pendingRestore=[];}catch(e){$('restore-summary').textContent=`恢复失败：${e.message}`;}finally{button.disabled=false;}};
-for(const id of ['pick-files','pick-directory','pick-manifest','reconnect'])$(id).onclick=()=>message('此功能正在下一阶段接入。');
+async function runImport(entries,total=0){
+ if(state.busy){message('请等待当前导入完成',true);return;}
+ state.busy=true;importController=new AbortController();if(!$('import-dialog').open)$('import-dialog').showModal();$('import-progress').value=0;$('import-progress').max=total||1;
+ try{const stats=await importFiles(entries,{store,signal:importController.signal,onProgress:s=>{$('import-report').textContent=reportStats(s);if(total)$('import-progress').value=s.processed;else $('import-progress').removeAttribute('value');},onImported:(image,file)=>{state.images.set(image.sha256,image);sessionFiles.set(image.sha256,file);if(objectUrls.has(image.sha256)){URL.revokeObjectURL(objectUrls.get(image.sha256));objectUrls.delete(image.sha256);}}});$('import-progress').max=1;$('import-progress').value=1;message(`导入结束：新增 ${stats.added}，已存在 ${stats.existing}，错误 ${stats.errors}`);}
+ catch(e){$('import-report').textContent+=`\n导入中止：${e.message}。已成功写入的记录保留。`;message(e.message,true);}
+ finally{state.busy=false;refreshCategories();render();}
+}
+$('pick-files').onclick=()=>$('files-input').click();
+$('files-input').onchange=e=>{const entries=[...e.target.files].map(file=>({file,path:file.name}));e.target.value='';runImport(entries,entries.length);};
+$('directory-input').onchange=e=>{const entries=[...e.target.files].map(file=>({file,path:file.webkitRelativePath||file.name}));e.target.value='';runImport(entries,entries.length);};
+$('pick-directory').onclick=async()=>{if(!window.showDirectoryPicker){$('directory-input').click();return;}try{const handle=await window.showDirectoryPicker({mode:'read'});let source;for(const known of await store.all('sources')){try{if(await known.handle.isSameEntry(handle)){source=known;break;}}catch{}}source=source||{id:crypto.randomUUID(),name:handle.name,handle};await store.put('sources',source);await runImport(directoryEntries(handle,handle.name,source.id));}catch(e){if(e.name!=='AbortError'){$('import-report').textContent=`文件夹权限不可用：${e.message}。改用普通文件夹选择。`;$('directory-input').click();}}};
+$('reconnect').onclick=async()=>{try{const sources=await store.all('sources');if(!sources.length){$('import-report').textContent='没有保存的目录。请选择文件夹或重新选择原图。';return;}for(const source of sources){if(await source.handle.requestPermission({mode:'read'})==='granted')await runImport(directoryEntries(source.handle,source.name,source.id));else $('import-report').textContent=`未授权文件夹 ${source.name}。已有索引和缩略图仍保留。`;}}catch(e){$('import-report').textContent=`重新连接失败：${e.message}。请重新选择文件夹。`;}};
+let dragDepth=0;
+window.addEventListener('dragenter',e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();dragDepth++;document.body.classList.add('dragging');}});
+window.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();});
+window.addEventListener('dragleave',()=>{if(--dragDepth<=0)document.body.classList.remove('dragging');});
+window.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');const items=[...e.dataTransfer.items].filter(i=>i.kind==='file').map(i=>({entry:i.webkitGetAsEntry?.(),file:i.getAsFile()}));runImport(droppedEntries(items));});
+$('pick-manifest').onclick=()=>message('manifest 导入正在下一阶段接入。');
 try {store=await openStore();for(const i of await store.all('images'))state.images.set(i.sha256,i);for(const u of await store.all('users'))state.users.set(u.sha256,u);refreshCategories();render();if(!state.images.size)await loadStarter();}
 catch(e){message(`无法启动存储：${e.message}`,true);}
