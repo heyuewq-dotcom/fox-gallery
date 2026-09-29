@@ -11,6 +11,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: python -m zipfile -e Fox_Gallery_Codex_Starter_300.zip local-data/starter
       - run: npm run audit:starter && npm test && npm run format:check
       - run: npx playwright install --with-deps chromium

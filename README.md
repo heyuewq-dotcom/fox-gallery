@@ -68,6 +68,7 @@ IndexedDB 按浏览器、用户配置和网站地址隔离；请保持 `http://l
 ```powershell
 npm ci
 npm test
+npm run build
 npm run audit:starter
 npm run format:check
 npx playwright install chromium
@@ -78,3 +79,7 @@ npm run test:browser
 Windows 已安装 Edge 时，可设置 `$env:BROWSER_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'` 后运行浏览器测试，无须另下载 Chromium。测试使用隔离浏览器上下文，不修改日常图库；临时结果放在 Git 忽略的 `test-results/`。
 
 实际验收见 `PROGRESS.md`；长期计划见 `PLAN.md`。新增迁移批次应放在 Git 忽略的本地目录，禁止将未来完整图库或个人备份提交 Git。
+
+`npm run build` 校验原生 JS 模块及本地导入路径，并将静态程序复制到 `dist/`；不引入打包框架、后台服务或新依赖，不复制原图、Starter ZIP 或个人备份。可将 `dist/` 交给任意 HTTPS 静态文件托管。开发预览仍使用原有 `npm start`。
+
+浏览布局可切换“方格 / 原比例瀑布流”，偏好保存在当前浏览器。缩略图在接近视口时读取；收藏和多选复用已加载卡片，翻页后释放不用的缩略图 URL。预览失败可单独重试。

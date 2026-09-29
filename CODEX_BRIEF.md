@@ -15,4 +15,4 @@
 
 v0.1 功能与本地验收已完成；先读 PROGRESS.md 的已知限制。当前技术栈为无运行时依赖的原生 ES modules + IndexedDB，Node.js 仅用于本地静态服务和开发测试。运行 `npm start`，开发检查 `npm test`、`npm run test:browser`。
 
-远端 GitHub 集成写入返回 403，代码尚未推送。所有阶段提交在 `codex/fox-gallery-v0.1`，完整历史在交付 Git bundle。下一次先恢复仓库写权限并推送已有分支，不要重建项目、重做已完成阶段或清理原始 Starter。
+用户已将 v0.1 同步到 main，基线 `2081d75`。当前按新要求在 `codex/daily-mvp` 改进浏览、详情、搜索、收藏和标签的日常体验。保持 manifest/IndexedDB/JSON 兼容，不新增后端、数据库服务、账户、AI 或云同步。完成这五项后停止扩展；以 PROGRESS.md 记录为准。

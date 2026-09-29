@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "node tests/browser.mjs && node tests/acceptance.mjs",
+    "test:browser": "node tests/browser.mjs && node tests/acceptance.mjs && node tests/mvp.mjs",
     "format": "prettier --write src scripts tests index.html schema package.json *.md",
     "format:check": "prettier --check src scripts tests index.html schema package.json *.md",
     "audit:starter": "node scripts/audit-starter.mjs"

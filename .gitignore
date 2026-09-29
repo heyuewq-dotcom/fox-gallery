@@ -1,4 +1,5 @@
 node_modules/
+dist/
 local-data/
 test-results/
 playwright-report/

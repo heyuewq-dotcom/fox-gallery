@@ -204,6 +204,25 @@ h2 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 22px 18px;
 }
+.grid[data-layout="masonry"] {
+  display: block;
+  columns: 5;
+  column-gap: 18px;
+}
+.grid[data-layout="masonry"] .card {
+  display: inline-block;
+  width: 100%;
+  break-inside: avoid;
+  margin-bottom: 18px;
+}
+.grid[data-layout="masonry"] .image-button {
+  aspect-ratio: var(--image-ratio, 1);
+}
+.retry-preview {
+  width: 100%;
+  font-size: 12px;
+  border-radius: 0;
+}
 .card {
   min-width: 0;
   border-radius: 12px;
@@ -262,8 +281,8 @@ h2 {
 }
 .heart {
   padding: 0;
-  width: 38px;
-  min-height: 38px;
+  width: 44px;
+  min-height: 44px;
   border: 0;
   border-radius: 50%;
   background: #fffffff0;
@@ -498,16 +517,26 @@ pre {
   pointer-events: none;
 }
 @media (min-width: 1500px) {
+  .grid[data-layout="masonry"] {
+    columns: 6;
+  }
   .grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 @media (max-width: 1050px) {
+  .grid[data-layout="masonry"] {
+    columns: 4;
+  }
   .grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 @media (max-width: 750px) {
+  .grid[data-layout="masonry"] {
+    columns: 3;
+    column-gap: 12px;
+  }
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
@@ -540,6 +569,13 @@ pre {
   }
 }
 @media (max-width: 480px) {
+  .grid[data-layout="masonry"] {
+    columns: 2;
+    column-gap: 10px;
+  }
+  .grid[data-layout="masonry"] .card {
+    margin-bottom: 12px;
+  }
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px 10px;

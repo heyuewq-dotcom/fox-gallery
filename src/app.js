@@ -3,6 +3,7 @@ import { makeBackup, validateBackup, restoreSummary } from "./backup.js";
 import { directoryEntries, droppedEntries, reportStats } from "./importer.js";
 import { hashFile } from "./media.js";
 import { importSelection, importManifest, parseManifest } from "./manifest.js";
+import { ThumbnailCache } from "./thumbnails.js";
 import {
   emptyUser,
   categoryOf,
@@ -21,10 +22,25 @@ const state = {
   selecting: false,
   active: null,
   busy: false,
+  layout: "grid",
 };
 const PAGE_SIZE = 60;
 let store;
-const objectUrls = new Map();
+const thumbnails = new ThumbnailCache((hash) => store.get("assets", hash));
+const cards = new Map();
+const thumbnailObserver =
+  "IntersectionObserver" in window
+    ? new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries)
+            if (entry.isIntersecting) {
+              thumbnailObserver.unobserve(entry.target);
+              loadCardThumbnail(entry.target);
+            }
+        },
+        { rootMargin: "300px" },
+      )
+    : null;
 const sessionFiles = new Map();
 let detailUrl = null,
   importController = null;
@@ -58,14 +74,78 @@ function filtered() {
 }
 
 async function thumbnail(image) {
-  if (objectUrls.has(image.sha256)) return objectUrls.get(image.sha256);
-  const asset = await store.get("assets", image.sha256);
-  if (asset?.thumbnail) {
-    const url = URL.createObjectURL(asset.thumbnail);
-    objectUrls.set(image.sha256, url);
-    return url;
+  return thumbnails.get(image.sha256, image.thumbnail);
+}
+function previewPlaceholder(text = "暂无预览") {
+  const placeholder = element("div", undefined, "placeholder");
+  placeholder.append(element("b", "◇"), element("small", text));
+  return placeholder;
+}
+async function loadCardThumbnail(card) {
+  const image = card.record;
+  const open = card.querySelector(".image-button");
+  try {
+    const url = await thumbnail(image);
+    if (!card.isConnected || card.record !== image) return;
+    if (!url) {
+      open.replaceChildren(previewPlaceholder());
+      return;
+    }
+    const img = element("img");
+    img.alt = image.filename;
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.width = image.width || 512;
+    img.height = image.height || 512;
+    img.onerror = () => {
+      if (card.record !== image) return;
+      const fallback = previewPlaceholder("预览加载失败");
+      open.replaceChildren(fallback);
+      const retry = card.querySelector(".retry-preview");
+      retry.hidden = false;
+    };
+    img.src = url;
+    open.replaceChildren(img);
+  } catch {
+    if (card.isConnected && card.record === image) {
+      open.replaceChildren(previewPlaceholder("预览读取失败"));
+      card.querySelector(".retry-preview").hidden = false;
+    }
   }
-  return image.thumbnail;
+}
+function createCard(hash) {
+  const card = element("article", undefined, "card");
+  card.dataset.hash = hash;
+  const open = element("button", undefined, "image-button");
+  open.onclick = () =>
+    state.selecting ? toggleSelect(hash) : showDetail(hash);
+  const controls = element("div", undefined, "card-controls");
+  const label = element("label", undefined, "select-check"),
+    check = element("input");
+  check.type = "checkbox";
+  check.onchange = () => toggleSelect(hash);
+  label.append(check);
+  const heart = element("button", undefined, "heart");
+  heart.onclick = async () => {
+    heart.disabled = true;
+    await saveUsers([hash], { favorite: !userFor(hash).favorite });
+    heart.disabled = false;
+  };
+  controls.append(label, heart);
+  const meta = element("div", undefined, "card-meta");
+  meta.append(
+    element("p", undefined, "card-title"),
+    element("div", undefined, "pills"),
+  );
+  const retry = element("button", "重新加载预览", "retry-preview");
+  retry.hidden = true;
+  retry.onclick = () => {
+    retry.hidden = true;
+    thumbnails.invalidate(hash);
+    loadCardThumbnail(card);
+  };
+  card.append(open, controls, meta, retry);
+  return card;
 }
 function refreshCategories() {
   const selected = $("category-filter").value;
@@ -90,61 +170,57 @@ function render() {
   $("total").textContent = state.images.size.toLocaleString();
   $("result-count").textContent =
     `${rows.length} 张图片 · ${[...state.images.values()].reduce((n, i) => n + i.sources.length, 0)} 个文件来源`;
-  $("grid").replaceChildren();
   $("empty").hidden = rows.length > 0;
-  for (const image of rows.slice(
+  const pageRows = rows.slice(
     state.page * PAGE_SIZE,
     (state.page + 1) * PAGE_SIZE,
-  )) {
-    const hash = image.sha256,
-      user = userFor(hash),
-      card = element("article", undefined, "card");
-    card.dataset.hash = hash;
-    card.classList.toggle("selected", state.selected.has(hash));
-    const open = element("button", undefined, "image-button");
-    open.setAttribute("aria-label", `查看 ${image.filename}`);
-    const placeholder = element("div", undefined, "placeholder");
-    placeholder.append(element("b", "◇"), element("small", "暂无预览"));
-    open.append(placeholder);
-    thumbnail(image)
-      .then((url) => {
-        if (!url || !open.isConnected) return;
-        const img = element("img");
-        img.alt = image.filename;
-        img.loading = "lazy";
-        img.decoding = "async";
-        img.src = url;
-        img.onerror = () => img.replaceWith(placeholder);
-        open.replaceChildren(img);
-      })
-      .catch(() => {});
-    open.onclick = () =>
-      state.selecting ? toggleSelect(hash) : showDetail(hash);
-    const controls = element("div", undefined, "card-controls");
-    if (state.selecting) {
-      const label = element("label", undefined, "select-check");
-      const check = element("input");
-      check.type = "checkbox";
-      check.checked = state.selected.has(hash);
-      check.setAttribute("aria-label", `选择 ${image.filename}`);
-      check.onchange = () => toggleSelect(hash);
-      label.append(check);
-      controls.append(label);
+  );
+  const keep = new Set(pageRows.map((image) => image.sha256));
+  for (const [hash, card] of cards)
+    if (!keep.has(hash)) {
+      thumbnailObserver?.unobserve(card);
+      card.remove();
+      cards.delete(hash);
     }
-    const heart = element("button", user.favorite ? "♥" : "♡", "heart");
+  if (state.active) keep.add(state.active);
+  thumbnails.retain(keep);
+  $("grid").dataset.layout = state.layout;
+  const fragment = document.createDocumentFragment();
+  const observed = [];
+  for (const image of pageRows) {
+    const hash = image.sha256,
+      user = userFor(hash);
+    const card = cards.get(hash) || createCard(hash);
+    cards.set(hash, card);
+    card.classList.toggle("selected", state.selected.has(hash));
+    const open = card.querySelector(".image-button");
+    open.setAttribute("aria-label", `查看 ${image.filename}`);
+    open.style.setProperty(
+      "--image-ratio",
+      `${image.width || 1} / ${image.height || 1}`,
+    );
+    if (card.record !== image) {
+      card.record = image;
+      open.replaceChildren(previewPlaceholder("等待预览"));
+      card.querySelector(".retry-preview").hidden = true;
+      observed.push(card);
+    }
+    card.querySelector(".select-check").hidden = !state.selecting;
+    const check = card.querySelector("input");
+    check.checked = state.selected.has(hash);
+    check.setAttribute("aria-label", `选择 ${image.filename}`);
+    const heart = card.querySelector(".heart");
+    heart.textContent = user.favorite ? "♥" : "♡";
     heart.setAttribute(
       "aria-label",
       `${user.favorite ? "取消收藏" : "收藏"} ${image.filename}`,
     );
     heart.setAttribute("aria-pressed", String(user.favorite));
-    heart.onclick = () =>
-      saveUsers([hash], { favorite: !userFor(hash).favorite });
-    controls.append(heart);
-    const meta = element("div", undefined, "card-meta"),
-      title = element("p", image.filename, "card-title");
+    const title = card.querySelector(".card-title");
+    title.textContent = image.filename;
     title.title = image.filename;
-    meta.append(title);
-    const pills = element("div", undefined, "pills");
+    const pills = card.querySelector(".pills");
+    pills.replaceChildren();
     pills.append(element("span", categoryOf(image, user), "pill"));
     if (isDuplicate(image))
       pills.append(
@@ -152,10 +228,12 @@ function render() {
       );
     for (const tag of user.tags.slice(0, 2))
       pills.append(element("span", `#${tag}`, "pill"));
-    meta.append(pills);
-    card.append(open, controls, meta);
-    $("grid").append(card);
+    fragment.append(card);
   }
+  $("grid").replaceChildren(fragment);
+  for (const card of observed)
+    if (thumbnailObserver) thumbnailObserver.observe(card);
+    else loadCardThumbnail(card);
   $("page-label").textContent =
     `${state.page + 1} / ${Math.max(1, Math.ceil(rows.length / PAGE_SIZE))}`;
   $("previous").disabled = !state.page;
@@ -296,6 +374,15 @@ $("search").oninput = () => {
 $("category-filter").onchange = () => {
   state.page = 0;
   render();
+};
+$("layout").onchange = async () => {
+  state.layout = $("layout").value;
+  render();
+  try {
+    await store.put("settings", { id: "gallery-view", layout: state.layout });
+  } catch (e) {
+    message(`布局偏好未保存：${e.message}`, true);
+  }
 };
 document.querySelectorAll("[data-filter]").forEach(
   (b) =>
@@ -493,10 +580,7 @@ async function runImport(entries, total = 0) {
       onImported: (image, file) => {
         state.images.set(image.sha256, image);
         if (file) sessionFiles.set(image.sha256, file);
-        if (objectUrls.has(image.sha256)) {
-          URL.revokeObjectURL(objectUrls.get(image.sha256));
-          objectUrls.delete(image.sha256);
-        }
+        thumbnails.invalidate(image.sha256);
       },
     });
     $("import-progress").max = 1;
@@ -618,6 +702,9 @@ $("manifest-input").onchange = (e) => {
 };
 try {
   store = await openStore();
+  const view = await store.get("settings", "gallery-view");
+  state.layout = view?.layout === "masonry" ? "masonry" : "grid";
+  $("layout").value = state.layout;
   for (const i of await store.all("images")) state.images.set(i.sha256, i);
   for (const u of await store.all("users")) state.users.set(u.sha256, u);
   refreshCategories();
