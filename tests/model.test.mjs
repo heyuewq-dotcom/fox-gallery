@@ -116,3 +116,42 @@ test("starter retains 300 sources grouped into 295 contents", async (t) => {
   );
   assert.equal([...map.values()].filter(isDuplicate).length, 3);
 });
+
+test("tag combinations intersect with category and favorite; removal preserves other data", () => {
+  const image = normalizeRecord({
+    sha256: hash,
+    filename: "a.png",
+    category: "art",
+  });
+  const user = {
+    favorite: true,
+    tags: ["red", "fox"],
+    category: "work",
+    note: "keep",
+  };
+  const users = new Map([[hash, user]]);
+  assert.equal(
+    filterImages([image], users, {
+      tags: ["red", "fox"],
+      category: "work",
+      filter: "favorite",
+    }).length,
+    1,
+  );
+  assert.equal(
+    filterImages([image], users, { tags: ["red", "missing"] }).length,
+    0,
+  );
+  assert.equal(
+    filterImages([image], users, { tags: ["red", "missing"], tagMode: "any" })
+      .length,
+    1,
+  );
+  assert.equal(
+    filterImages([image], users, { tags: ["red"], category: "art" }).length,
+    0,
+  );
+  assert.deepEqual(userPatch(user, { removeTags: ["red"] }).tags, ["fox"]);
+  assert.equal(userPatch(user, { removeTags: ["red"] }).note, "keep");
+  assert.deepEqual(userPatch(user, { tags: [] }).tags, []);
+});

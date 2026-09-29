@@ -75,6 +75,8 @@ function filtered() {
       query: $("search").value,
       category: $("category-filter").value,
       filter: state.filter,
+      tags: parseTags($("tag-filter").value),
+      tagMode: $("tag-mode").value,
     },
   );
 }
@@ -496,6 +498,20 @@ $("category-filter").onchange = () => {
   state.page = 0;
   render();
 };
+for (const id of ["tag-filter", "tag-mode"])
+  $(id).addEventListener(id === "tag-filter" ? "input" : "change", () => {
+    state.page = 0;
+    render();
+  });
+$("clear-filters").onclick = () => {
+  $("search").value = "";
+  $("category-filter").value = "";
+  $("tag-filter").value = "";
+  $("tag-mode").value = "all";
+  state.filter = "all";
+  state.page = 0;
+  render();
+};
 $("layout").onchange = async () => {
   state.layout = $("layout").value;
   render();
@@ -631,18 +647,26 @@ function openBatch(mode) {
     return;
   }
   batchMode = mode;
-  $("batch-title").textContent =
-    mode === "tags" ? "批量添加标签" : "批量设置分类";
+  const labels = {
+    category: "设置分类",
+    tags: "添加标签",
+    removeTags: "移除标签",
+    replaceTags: "替换全部标签",
+  };
+  $("batch-title").textContent = `批量${labels[mode]}`;
   $("batch-description").textContent =
-    `将修改 ${state.selected.size} 张图片。${mode === "tags" ? "现有标签将保留。" : "只改变所选图片的分类。"}`;
+    `将修改 ${state.selected.size} 张图片。${mode === "replaceTags" ? "全部旧标签将被替换；留空会清空标签。" : mode === "tags" ? "现有标签将保留。" : "其他字段保持不变。"}`;
   $("batch-value").value = "";
-  $("batch-value").maxLength = mode === "tags" ? 2000 : 120;
+  $("batch-value").required = mode !== "replaceTags";
+  $("batch-value").maxLength = mode === "category" ? 120 : 2000;
   $("batch-label").textContent =
-    mode === "tags" ? "标签（逗号分隔）" : "分类名称";
+    mode === "category" ? "分类名称" : "标签（逗号分隔）";
   $("batch-dialog").showModal();
 }
 $("batch-category").onclick = () => openBatch("category");
 $("batch-tags").onclick = () => openBatch("tags");
+$("batch-remove-tags").onclick = () => openBatch("removeTags");
+$("batch-replace-tags").onclick = () => openBatch("replaceTags");
 $("batch-favorite").onclick = async () => {
   if (!state.selected.size) return message("请先选择图片");
   if (await saveUsers([...state.selected], { favorite: true }))
@@ -652,9 +676,15 @@ $("batch-cancel").onclick = () => $("batch-dialog").close();
 $("batch-form").onsubmit = async (e) => {
   e.preventDefault();
   const value = $("batch-value").value.trim();
-  if (!value) return;
+  if (!value && batchMode !== "replaceTags") return;
   const patch =
-    batchMode === "tags" ? { addTags: parseTags(value) } : { category: value };
+    batchMode === "category"
+      ? { category: value }
+      : {
+          [{ tags: "addTags", removeTags: "removeTags", replaceTags: "tags" }[
+            batchMode
+          ]]: parseTags(value),
+        };
   if (await saveUsers([...state.selected], patch)) {
     $("batch-dialog").close();
     message(`已更新 ${state.selected.size} 张图片`);

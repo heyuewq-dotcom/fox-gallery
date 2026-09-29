@@ -23,6 +23,11 @@ export function userPatch(user, patch) {
     ...emptyUser(),
     ...user,
     ...patch,
+    ...(patch.removeTags
+      ? {
+          tags: (user?.tags || []).filter((t) => !patch.removeTags.includes(t)),
+        }
+      : {}),
     ...(patch.addTags
       ? { tags: [...new Set([...(user?.tags || []), ...patch.addTags])] }
       : {}),
@@ -115,11 +120,24 @@ export function mergeImage(previous, next) {
 export function filterImages(
   images,
   users,
-  { query = "", category = "", filter = "all" } = {},
+  {
+    query = "",
+    category = "",
+    filter = "all",
+    tags = [],
+    tagMode = "all",
+  } = {},
 ) {
   const q = query.trim().toLocaleLowerCase();
   return images.filter((image) => {
     const user = users.get(image.sha256) || emptyUser();
+    if (
+      tags.length &&
+      !(tagMode === "any"
+        ? tags.some((t) => user.tags.includes(t))
+        : tags.every((t) => user.tags.includes(t)))
+    )
+      return false;
     if (category && categoryOf(image, user) !== category) return false;
     if (filter === "favorite" && !user.favorite) return false;
     if (filter === "duplicate" && !isDuplicate(image)) return false;

@@ -716,3 +716,18 @@ pre {
     text-align: center;
   }
 }
+.tag-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+  margin-top: 12px;
+}
+.tag-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tag-filters input {
+  max-width: 100%;
+}

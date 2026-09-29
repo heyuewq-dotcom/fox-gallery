@@ -47,6 +47,18 @@
           <option value="masonry">原比例瀑布流</option></select
         ><button id="select-mode" aria-pressed="false">多选</button>
       </section>
+      <section class="tag-filters" aria-label="标签组合筛选">
+        <label
+          >标签（逗号分隔）<input
+            id="tag-filter"
+            placeholder="例如：角色, 灵感"
+        /></label>
+        <select id="tag-mode" aria-label="标签匹配方式">
+          <option value="all">包含全部标签</option>
+          <option value="any">包含任一标签</option>
+        </select>
+        <button id="clear-filters">清除筛选</button>
+      </section>
       <nav class="filters" aria-label="图库视图">
         <button data-filter="all" aria-pressed="true">全部图片</button
         ><button data-filter="favorite" aria-pressed="false">♡ 收藏</button
@@ -70,6 +82,8 @@
         ><button id="select-page">选择本页</button
         ><button id="batch-category">分类</button
         ><button id="batch-tags">添加标签</button
+        ><button id="batch-remove-tags">移除标签</button
+        ><button id="batch-replace-tags">替换标签</button
         ><button id="batch-favorite">收藏</button
         ><button id="clear-selection">完成</button>
       </section>

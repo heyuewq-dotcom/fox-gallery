@@ -97,6 +97,7 @@ export async function openStore(name = "fox-gallery") {
                 updatedAt: new Date().toISOString(),
               };
               delete row.addTags;
+              delete row.removeTags;
               validateBackup(makeBackup([row]));
               s.put(row);
               rows.push(row);
