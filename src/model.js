@@ -42,11 +42,13 @@ export function normalizeRecord(row, context = {}) {
     "batch",
     "mimeType",
     "createdAt",
-    "duplicateGroup",
-    "duplicate_group",
   ])
     if (row[field] !== undefined && typeof row[field] !== "string")
       throw new Error(`${field} 必须是字符串`);
+  // Legacy gallery exports use null for images without a duplicate group.
+  for (const field of ["duplicateGroup", "duplicate_group"])
+    if (row[field] != null && typeof row[field] !== "string")
+      throw new Error(`${field} 必须是字符串或 null`);
   const sha256 = row.sha256.toLowerCase();
   const source = {
     filename: row.filename,

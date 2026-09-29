@@ -26,6 +26,8 @@
           "height": { "type": "number", "minimum": 0 },
           "size_bytes": { "type": "number", "minimum": 0 },
           "category": { "type": "string" },
+          "duplicate_group": { "type": ["string", "null"] },
+          "duplicateGroup": { "type": ["string", "null"] },
           "thumb": { "type": "string" },
           "original_rel": { "type": "string" }
         }

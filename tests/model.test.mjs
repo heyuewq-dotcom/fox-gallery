@@ -10,6 +10,21 @@ import {
   userPatch,
 } from "../src/model.js";
 const hash = "a".repeat(64);
+test("legacy null duplicate groups import without weakening field validation", () => {
+  for (const field of ["duplicate_group", "duplicateGroup"]) {
+    const row = { sha256: hash, filename: "legacy.png", [field]: null };
+    const image = normalizeRecord(row);
+    assert.equal(image.duplicateGroup, "");
+    assert.equal(isDuplicate(image), false);
+    const previous = normalizeRecord({ ...row, [field]: "group-1" });
+    assert.equal(mergeImage(previous, image).duplicateGroup, "group-1");
+    for (const invalid of [1, false, [], {}])
+      assert.throws(() => normalizeRecord({ ...row, [field]: invalid }));
+  }
+  assert.throws(() =>
+    normalizeRecord({ sha256: hash, filename: "a", batch: null }),
+  );
+});
 test("sparse metadata updates retain measured dimensions and category", () => {
   const old = normalizeRecord({
     sha256: hash,

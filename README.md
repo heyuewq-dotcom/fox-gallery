@@ -33,6 +33,7 @@ npm start
 - 每次导入显示新增、已存在、更新、重复、错误、跳过和逐条错误。可取消导入，已成功保存的内容保留。
 - “导入 manifest”支持 Starter JSON 数组、`{schemaVersion:1, images:[]}` 和 CSV。含 manifest 的整文件夹导入会关联 `original_rel` 与 `thumb`，不把缩略图当作原图。
 - 同目录同时存在 `manifest.json` 与 `manifest.csv` 时采用 JSON。一个迁移目录建议只放一份有效 manifest；其他 JSON/CSV 会作为待导入索引校验。
+- 兼容旧图库索引中 `duplicate_group: null`（无重复组）。追加批次仍按 SHA-256 合并，不覆盖收藏、标签、用户分类或备注；来源记录数不等于去重后的图片数。
 - 导入单个 manifest 只导入索引；预览需要同时导入整个迁移目录，或以后选择本地原图。外部 manifest 不加载网络图片或任意绝对路径。
 
 ## 备份和恢复
