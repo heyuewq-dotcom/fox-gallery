@@ -75,11 +75,29 @@
       </section>
     </main>
     <footer>FOX GALLERY <span>本地优先 · 原图与重复图始终保留</span></footer>
-    <dialog id="detail" class="detail">
-      <button class="close" id="detail-close" aria-label="关闭详情">×</button>
+    <dialog id="detail" class="detail" aria-labelledby="detail-name">
+      <div class="detail-toolbar" aria-label="图片浏览">
+        <button id="detail-previous" aria-label="上一张图片">← 上一张</button>
+        <span id="detail-position" aria-live="polite"></span>
+        <button id="detail-next" aria-label="下一张图片">下一张 →</button>
+        <button class="close" id="detail-close" aria-label="关闭详情">×</button>
+      </div>
       <div class="preview">
-        <img id="detail-image" alt="" />
-        <p id="preview-hint"></p>
+        <div
+          id="preview-viewport"
+          class="preview-viewport"
+          tabindex="0"
+          aria-label="图片预览，可滚动查看放大图片"
+        >
+          <img id="detail-image" alt="" />
+        </div>
+        <p id="preview-hint" role="status"></p>
+        <div class="preview-actions">
+          <button id="detail-zoom" aria-pressed="false" disabled>
+            实际尺寸</button
+          ><button id="detail-relink">选择本地原图</button>
+        </div>
+        <input id="detail-file-input" type="file" accept="image/*" hidden />
       </div>
       <div class="detail-body">
         <p class="eyebrow">IMAGE DETAILS</p>
@@ -114,6 +132,21 @@
           <summary>文件来源与重复信息</summary>
           <ul id="sources"></ul>
         </details>
+      </div>
+    </dialog>
+    <dialog
+      id="unsaved-dialog"
+      class="import-dialog"
+      aria-labelledby="unsaved-title"
+    >
+      <h2 id="unsaved-title">更改尚未保存</h2>
+      <p id="unsaved-message" class="muted">
+        关闭详情或切换图片前，请选择如何处理当前编辑。
+      </p>
+      <div class="unsaved-actions">
+        <button id="unsaved-stay">继续编辑</button
+        ><button id="unsaved-discard">放弃本次编辑</button
+        ><button id="unsaved-save" class="primary">保存并继续</button>
       </div>
     </dialog>
     <dialog id="import-dialog" class="import-dialog">

@@ -394,6 +394,59 @@ dialog::backdrop {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
 }
+.detail-toolbar {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8f7f4;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#detail-position {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.detail-toolbar .close {
+  position: static;
+  width: 44px;
+  flex-shrink: 0;
+}
+.preview-viewport {
+  width: 100%;
+  max-height: 65vh;
+  min-height: 100px;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+}
+.preview-viewport.zoomed {
+  display: block;
+}
+.preview-viewport.zoomed img {
+  max-width: none;
+  max-height: none;
+  display: block;
+}
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.preview-actions button {
+  font-size: 12px;
+}
+.unsaved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .preview {
   padding: 28px;
   background: #e9ece4;
@@ -533,6 +586,9 @@ pre {
   }
 }
 @media (max-width: 750px) {
+  .preview-viewport {
+    max-height: 45vh;
+  }
   .grid[data-layout="masonry"] {
     columns: 3;
     column-gap: 12px;
@@ -569,6 +625,14 @@ pre {
   }
 }
 @media (max-width: 480px) {
+  .detail-toolbar {
+    padding: 8px;
+    gap: 5px;
+  }
+  .detail-toolbar button {
+    font-size: 12px;
+    padding: 8px;
+  }
   .grid[data-layout="masonry"] {
     columns: 2;
     column-gap: 10px;

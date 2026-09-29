@@ -4,6 +4,7 @@ import { directoryEntries, droppedEntries, reportStats } from "./importer.js";
 import { hashFile } from "./media.js";
 import { importSelection, importManifest, parseManifest } from "./manifest.js";
 import { ThumbnailCache } from "./thumbnails.js";
+import { detailPatch, formatFileSize } from "./detail.js";
 import {
   emptyUser,
   categoryOf,
@@ -44,6 +45,11 @@ const thumbnailObserver =
 const sessionFiles = new Map();
 let detailUrl = null,
   importController = null;
+let detailOrder = [],
+  detailBaseline = null,
+  detailGeneration = 0;
+let detailSaving = null,
+  pendingDetailAction = null;
 function message(text, error = false) {
   $("status").textContent = text;
   $("status").classList.toggle("error", error);
@@ -118,7 +124,7 @@ function createCard(hash) {
   card.dataset.hash = hash;
   const open = element("button", undefined, "image-button");
   open.onclick = () =>
-    state.selecting ? toggleSelect(hash) : showDetail(hash);
+    state.selecting ? toggleSelect(hash) : openDetail(hash);
   const controls = element("div", undefined, "card-controls");
   const label = element("label", undefined, "select-check"),
     check = element("input");
@@ -268,28 +274,92 @@ async function saveUsers(hashes, patch) {
     return false;
   }
 }
+function detailDraft() {
+  return {
+    favorite: $("favorite").checked,
+    category: $("edit-category").value.trim(),
+    tags: parseTags($("edit-tags").value),
+    note: $("edit-note").value,
+  };
+}
+function detailDirty() {
+  return Boolean(
+    state.active &&
+    detailBaseline &&
+    Object.keys(detailPatch(detailBaseline, detailDraft())).length,
+  );
+}
+function updateDetailNavigation() {
+  const index = detailOrder.indexOf(state.active);
+  $("detail-position").textContent = `${index + 1} / ${detailOrder.length}`;
+  $("detail-previous").disabled = Boolean(detailSaving) || index <= 0;
+  $("detail-next").disabled =
+    Boolean(detailSaving) || index >= detailOrder.length - 1;
+}
+function setZoom(zoomed) {
+  $("preview-viewport").classList.toggle("zoomed", zoomed);
+  $("detail-zoom").setAttribute("aria-pressed", String(zoomed));
+  $("detail-zoom").textContent = zoomed ? "适应窗口" : "实际尺寸";
+  $("preview-viewport").scrollTo(0, 0);
+}
+function setDetailPreview(url, hint, generation) {
+  if (generation !== detailGeneration || !state.active) return;
+  const img = $("detail-image");
+  img.hidden = !url;
+  $("detail-zoom").disabled = !url;
+  img.onerror = () => {
+    if (generation !== detailGeneration) return;
+    img.hidden = true;
+    $("detail-zoom").disabled = true;
+    $("preview-hint").textContent = "预览无法读取，可重新选择本地原图。";
+  };
+  if (url) img.src = url;
+  else img.removeAttribute("src");
+  $("preview-hint").textContent = hint;
+}
+async function displayOriginal(file, hash, generation) {
+  if (file.size > 150 * 1024 * 1024)
+    throw new Error("原图超过单文件 150 MB 上限");
+  if ((await hashFile(file)) !== hash)
+    throw new Error("所选文件的 SHA-256 不匹配，原有图片和编辑未更改");
+  if (generation !== detailGeneration || state.active !== hash) return;
+  if (detailUrl) URL.revokeObjectURL(detailUrl);
+  detailUrl = URL.createObjectURL(file);
+  sessionFiles.set(hash, file);
+  setDetailPreview(detailUrl, "本地原图", generation);
+}
+function openDetail(hash) {
+  detailOrder = filtered().map((image) => image.sha256);
+  showDetail(hash);
+}
 async function showDetail(hash) {
-  if (detailUrl) {
-    URL.revokeObjectURL(detailUrl);
-    detailUrl = null;
-  }
+  const generation = ++detailGeneration;
+  if (detailUrl) URL.revokeObjectURL(detailUrl);
+  detailUrl = null;
   state.active = hash;
   const image = state.images.get(hash),
     user = userFor(hash);
+  thumbnails.retain(new Set([...cards.keys(), hash]));
+  setZoom(false);
+  setDetailPreview("", "正在读取预览…", generation);
   $("detail-name").textContent = image.filename;
-  $("detail-image").removeAttribute("src");
   $("detail-image").alt = image.filename;
-  $("preview-hint").textContent = "缩略图预览 · 原图仍保留在本地";
   $("favorite").checked = user.favorite;
   $("edit-category").value = categoryOf(image, user);
   $("edit-tags").value = user.tags.join(", ");
   $("edit-note").value = user.note;
+  detailBaseline = detailDraft();
   $("save-hint").textContent = "";
   $("metadata").replaceChildren();
   for (const [label, value] of [
     ["SHA-256", hash],
-    ["尺寸", `${image.width} × ${image.height}`],
-    ["文件大小", `${(image.fileSize / 1024).toFixed(1)} KB`],
+    [
+      "尺寸",
+      image.width && image.height
+        ? `${image.width} × ${image.height}`
+        : "未提供",
+    ],
+    ["文件大小", formatFileSize(image.fileSize)],
     ["MIME", image.mimeType || "未提供"],
     ["来源", image.source],
     [
@@ -304,13 +374,23 @@ async function showDetail(hash) {
       element("li", `${s.path} · ${s.origin}${s.batch ? " · " + s.batch : ""}`),
     ),
   );
+  updateDetailNavigation();
   if (!$("detail").open) $("detail").showModal();
-  const url = await thumbnail(image);
-  if (state.active === hash) {
-    $("detail-image").hidden = !url;
-    if (url) $("detail-image").src = url;
-    else $("preview-hint").textContent = "暂无预览 · 可重新选择本地原图";
+  $("detail").scrollTop = 0;
+  try {
+    const url = await thumbnail(image);
+    setDetailPreview(
+      url,
+      url
+        ? "缩略图预览 · 可选择本地原图查看完整尺寸"
+        : "暂无预览 · 可重新选择本地原图",
+      generation,
+    );
+  } catch (e) {
+    if (generation === detailGeneration)
+      $("preview-hint").textContent = `缩略图读取失败：${e.message}`;
   }
+  if (generation !== detailGeneration) return;
   try {
     let file = sessionFiles.get(hash);
     if (!file) {
@@ -320,22 +400,63 @@ async function showDetail(hash) {
           (await asset.handle.queryPermission({ mode: "read" })) === "granted"
         )
           file = await asset.handle.getFile();
+        else if (generation === detailGeneration)
+          $("preview-hint").textContent =
+            "原图目录需重新授权；可在这里选择原图，或在导入入口重新连接文件夹。";
       }
     }
-    if (file) {
-      if ((await hashFile(file)) !== hash)
-        throw new Error("源文件内容已改变，请重新导入");
-      if (state.active === hash) {
-        detailUrl = URL.createObjectURL(file);
-        $("detail-image").hidden = false;
-        $("detail-image").src = detailUrl;
-        $("preview-hint").textContent = "本地原图";
-      }
-    }
+    if (file) await displayOriginal(file, hash, generation);
   } catch (e) {
-    if (state.active === hash)
-      $("preview-hint").textContent = `显示缩略图：${e.message}`;
+    if (generation === detailGeneration)
+      $("preview-hint").textContent =
+        `原图暂不可用：${e.message}。可重新选择本地原图。`;
   }
+}
+async function saveDetail() {
+  if (detailSaving) return detailSaving;
+  const hash = state.active,
+    draft = detailDraft(),
+    patch = detailPatch(detailBaseline, draft);
+  if (!Object.keys(patch).length) {
+    $("save-hint").textContent = "已保存";
+    return true;
+  }
+  const controls = [
+    ...$("detail-form").querySelectorAll("input, textarea, button"),
+  ];
+  controls.forEach((control) => (control.disabled = true));
+  $("detail-close").disabled = true;
+  $("save-hint").textContent = "正在保存…";
+  detailSaving = saveUsers([hash], patch);
+  updateDetailNavigation();
+  try {
+    const saved = await detailSaving;
+    if (saved) {
+      detailBaseline = draft;
+      $("save-hint").textContent = "已保存";
+    }
+    return saved;
+  } finally {
+    detailSaving = null;
+    controls.forEach((control) => (control.disabled = false));
+    $("detail-close").disabled = false;
+    updateDetailNavigation();
+  }
+}
+async function requestDetailAction(action) {
+  if (detailSaving && !(await detailSaving)) return;
+  if (detailDirty()) {
+    pendingDetailAction = action;
+    $("unsaved-message").textContent =
+      "关闭详情或切换图片前，请选择如何处理当前编辑。";
+    if (!$("unsaved-dialog").open) $("unsaved-dialog").showModal();
+    return;
+  }
+  action();
+}
+function navigateDetail(direction) {
+  const target = detailOrder[detailOrder.indexOf(state.active) + direction];
+  if (target) requestDetailAction(() => showDetail(target));
 }
 async function loadStarter() {
   if (state.busy) return message("请等待当前导入完成");
@@ -401,23 +522,98 @@ $("next").onclick = () => {
   render();
   window.scrollTo({ top: 0 });
 };
-$("detail-close").onclick = () => $("detail").close();
+$("detail-close").onclick = () =>
+  requestDetailAction(() => $("detail").close());
+$("detail-previous").onclick = () => navigateDetail(-1);
+$("detail-next").onclick = () => navigateDetail(1);
+$("detail").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  requestDetailAction(() => $("detail").close());
+});
+$("detail").addEventListener("keydown", (event) => {
+  if (
+    event.target.closest("input, textarea, select, [contenteditable=true]") ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  )
+    return;
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    event.preventDefault();
+    navigateDetail(event.key === "ArrowLeft" ? -1 : 1);
+  }
+});
 $("detail").addEventListener("close", () => {
+  const hash = state.active;
+  ++detailGeneration;
   state.active = null;
+  detailBaseline = null;
   if (detailUrl) URL.revokeObjectURL(detailUrl);
   detailUrl = null;
+  $("detail-image").removeAttribute("src");
+  const index = filtered().findIndex((image) => image.sha256 === hash);
+  if (index >= 0) state.page = Math.floor(index / PAGE_SIZE);
+  render();
+  (cards.get(hash)?.querySelector(".image-button") || $("search")).focus({
+    preventScroll: true,
+  });
 });
 $("detail-form").onsubmit = async (e) => {
   e.preventDefault();
-  if (
-    await saveUsers([state.active], {
-      favorite: $("favorite").checked,
-      category: $("edit-category").value.trim(),
-      tags: parseTags($("edit-tags").value),
-      note: $("edit-note").value,
-    })
-  )
-    $("save-hint").textContent = "已保存";
+  await saveDetail();
+};
+$("detail-form").oninput = () =>
+  ($("save-hint").textContent = detailDirty() ? "尚未保存" : "");
+$("unsaved-stay").onclick = () => {
+  pendingDetailAction = null;
+  $("unsaved-dialog").close();
+};
+$("unsaved-dialog").addEventListener("cancel", () => {
+  pendingDetailAction = null;
+});
+$("unsaved-discard").onclick = () => {
+  const action = pendingDetailAction;
+  pendingDetailAction = null;
+  $("unsaved-dialog").close();
+  action?.();
+};
+$("unsaved-save").onclick = async () => {
+  const buttons = [...$("unsaved-dialog").querySelectorAll("button")];
+  buttons.forEach((button) => (button.disabled = true));
+  try {
+    if (await saveDetail()) {
+      const action = pendingDetailAction;
+      pendingDetailAction = null;
+      $("unsaved-dialog").close();
+      action?.();
+    } else $("unsaved-message").textContent = $("save-hint").textContent;
+  } finally {
+    buttons.forEach((button) => (button.disabled = false));
+  }
+};
+window.addEventListener("beforeunload", (event) => {
+  if (detailDirty()) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
+$("detail-zoom").onclick = () =>
+  setZoom($("detail-zoom").getAttribute("aria-pressed") !== "true");
+$("detail-relink").onclick = () => $("detail-file-input").click();
+$("detail-file-input").onchange = async (event) => {
+  const file = event.target.files[0],
+    hash = state.active;
+  event.target.value = "";
+  if (!file || !hash) return;
+  const generation = ++detailGeneration;
+  $("preview-hint").textContent = "正在验证原图 SHA-256…";
+  try {
+    await displayOriginal(file, hash, generation);
+  } catch (e) {
+    if (generation === detailGeneration)
+      $("preview-hint").textContent = e.message;
+  }
 };
 $("starter").onclick = loadStarter;
 $("load-starter").onclick = loadStarter;
