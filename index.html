@@ -44,6 +44,7 @@
           <option value="">全部分类</option></select
         ><select id="layout" aria-label="浏览布局">
           <option value="grid">方格</option>
+          <option value="virtual">连续浏览（大图库）</option>
           <option value="masonry">原比例瀑布流</option></select
         ><button id="select-mode" aria-pressed="false">多选</button>
       </section>
@@ -66,7 +67,9 @@
         ><span id="result-count" class="muted"></span>
       </nav>
       <div id="status" role="status" aria-live="polite"></div>
-      <section id="grid" class="grid" aria-label="图片网格"></section>
+      <div id="gallery-viewport" tabindex="0" aria-label="图库浏览区域">
+        <section id="grid" class="grid" aria-label="图片网格"></section>
+      </div>
       <div id="empty" class="empty" hidden>
         <span>◇</span>
         <h2>这里还有更多可能</h2>

@@ -1,3 +1,5 @@
+import { GalleryIndex } from "./gallery-index.js";
+import { virtualWindow } from "./virtual.js";
 import { openStore } from "./store.js";
 import { makeBackup, validateBackup, restoreSummary } from "./backup.js";
 import { directoryEntries, droppedEntries, reportStats } from "./importer.js";
@@ -5,13 +7,7 @@ import { hashFile } from "./media.js";
 import { importSelection, importManifest, parseManifest } from "./manifest.js";
 import { ThumbnailCache } from "./thumbnails.js";
 import { detailPatch, formatFileSize } from "./detail.js";
-import {
-  emptyUser,
-  categoryOf,
-  isDuplicate,
-  parseTags,
-  filterImages,
-} from "./model.js";
+import { emptyUser, categoryOf, isDuplicate, parseTags } from "./model.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -26,6 +22,18 @@ const state = {
   layout: "grid",
 };
 const PAGE_SIZE = 60;
+let index = new GalleryIndex();
+function setImage(image) {
+  state.images.set(image.sha256, image);
+  index.upsert(image, userFor(image.sha256));
+}
+function setUser(user) {
+  state.users.set(user.sha256, user);
+  const image = state.images.get(user.sha256);
+  if (image) index.upsert(image, user);
+}
+let visibleRows = [];
+let filterKey = "";
 let store;
 const thumbnails = new ThumbnailCache((hash) => store.get("assets", hash));
 const cards = new Map();
@@ -64,21 +72,13 @@ function userFor(hash) {
   return state.users.get(hash) || emptyUser();
 }
 function filtered() {
-  return filterImages(
-    [...state.images.values()].sort(
-      (a, b) =>
-        b.importedAt.localeCompare(a.importedAt) ||
-        a.sha256.localeCompare(b.sha256),
-    ),
-    state.users,
-    {
-      query: $("search").value,
-      category: $("category-filter").value,
-      filter: state.filter,
-      tags: parseTags($("tag-filter").value),
-      tagMode: $("tag-mode").value,
-    },
-  );
+  return index.query({
+    query: $("search").value,
+    category: $("category-filter").value,
+    filter: state.filter,
+    tags: parseTags($("tag-filter").value),
+    tagMode: $("tag-mode").value,
+  });
 }
 
 async function thumbnail(image) {
@@ -170,6 +170,9 @@ function refreshCategories() {
   $("categories").replaceChildren(...categories.map((c) => new Option(c, c)));
 }
 function render() {
+  const focusedCardControl = $("grid").contains(document.activeElement)
+    ? document.activeElement
+    : null;
   const rows = filtered();
   state.page = Math.max(
     0,
@@ -177,12 +180,41 @@ function render() {
   );
   $("total").textContent = state.images.size.toLocaleString();
   $("result-count").textContent =
-    `${rows.length} 张图片 · ${[...state.images.values()].reduce((n, i) => n + i.sources.length, 0)} 个文件来源`;
+    `${rows.length} 张图片 · ${index.sourceCount} 个文件来源`;
   $("empty").hidden = rows.length > 0;
-  const pageRows = rows.slice(
+  let pageRows = rows.slice(
     state.page * PAGE_SIZE,
     (state.page + 1) * PAGE_SIZE,
   );
+  const viewport = $("gallery-viewport"),
+    virtual = state.layout === "virtual";
+  viewport.classList.toggle("virtual-viewport", virtual);
+  const nextKey = JSON.stringify([
+    $("search").value,
+    $("category-filter").value,
+    state.filter,
+    $("tag-filter").value,
+    $("tag-mode").value,
+    state.layout,
+  ]);
+  if (nextKey !== filterKey) {
+    viewport.scrollTop = 0;
+    filterKey = nextKey;
+  }
+  const geometry = virtualWindow(
+    rows.length,
+    viewport.clientWidth,
+    viewport.clientHeight,
+    viewport.scrollTop,
+  );
+  if (virtual) {
+    pageRows = rows.slice(geometry.start, geometry.end);
+    viewport.scrollTop = geometry.top;
+  }
+  visibleRows = pageRows;
+  $("grid").style.height = virtual ? geometry.totalHeight + "px" : "";
+  document.querySelector(".pager").hidden = virtual;
+  $("select-page").textContent = virtual ? "选择当前加载图片" : "选择本页";
   const keep = new Set(pageRows.map((image) => image.sha256));
   for (const [hash, card] of cards)
     if (!keep.has(hash)) {
@@ -236,9 +268,25 @@ function render() {
       );
     for (const tag of user.tags.slice(0, 2))
       pills.append(element("span", `#${tag}`, "pill"));
+    if (virtual) {
+      const position = geometry.start + pageRows.indexOf(image);
+      card.style.position = "absolute";
+      card.style.width = geometry.cardWidth + "px";
+      card.style.height = geometry.cardHeight + "px";
+      card.style.left =
+        (position % geometry.columns) * (geometry.cardWidth + geometry.gap) +
+        "px";
+      card.style.top =
+        Math.floor(position / geometry.columns) * geometry.rowHeight + "px";
+    } else card.removeAttribute("style");
     fragment.append(card);
   }
   $("grid").replaceChildren(fragment);
+  if (focusedCardControl) {
+    (focusedCardControl.isConnected ? focusedCardControl : viewport).focus({
+      preventScroll: true,
+    });
+  }
   for (const card of observed)
     if (thumbnailObserver) thumbnailObserver.observe(card);
     else loadCardThumbnail(card);
@@ -264,7 +312,7 @@ function toggleSelect(hash) {
 async function saveUsers(hashes, patch) {
   try {
     const rows = await store.updateUsers(hashes, patch);
-    for (const row of rows) state.users.set(row.sha256, row);
+    for (const row of rows) setUser(row);
     refreshCategories();
     render();
     return true;
@@ -475,7 +523,7 @@ async function loadStarter() {
         row.thumb
           ? "local-data/starter/thumbs/" + encodeURIComponent(row.thumb)
           : "",
-      onImported: (image) => state.images.set(image.sha256, image),
+      onImported: (image) => setImage(image),
     });
     refreshCategories();
     render();
@@ -569,7 +617,19 @@ $("detail").addEventListener("close", () => {
   detailUrl = null;
   $("detail-image").removeAttribute("src");
   const index = filtered().findIndex((image) => image.sha256 === hash);
-  if (index >= 0) state.page = Math.floor(index / PAGE_SIZE);
+  if (index >= 0) {
+    state.page = Math.floor(index / PAGE_SIZE);
+    if (state.layout === "virtual") {
+      const g = virtualWindow(
+        filtered().length,
+        $("gallery-viewport").clientWidth,
+        $("gallery-viewport").clientHeight,
+        0,
+      );
+      $("gallery-viewport").scrollTop =
+        Math.floor(index / g.columns) * g.rowHeight;
+    }
+  }
   render();
   (cards.get(hash)?.querySelector(".image-button") || $("search")).focus({
     preventScroll: true,
@@ -691,11 +751,7 @@ $("batch-form").onsubmit = async (e) => {
   }
 };
 $("select-page").onclick = () => {
-  for (const i of filtered().slice(
-    state.page * PAGE_SIZE,
-    (state.page + 1) * PAGE_SIZE,
-  ))
-    state.selected.add(i.sha256);
+  for (const i of visibleRows) state.selected.add(i.sha256);
   render();
 };
 $("clear-selection").onclick = () => {
@@ -755,6 +811,9 @@ $("restore-apply").onclick = async () => {
       $("restore-mode").value === "replace",
     );
     state.users = new Map((await store.all("users")).map((u) => [u.sha256, u]));
+    index = new GalleryIndex();
+    for (const image of state.images.values())
+      index.upsert(image, userFor(image.sha256));
     refreshCategories();
     render();
     $("restore-dialog").close();
@@ -804,7 +863,7 @@ async function runImport(entries, total = 0) {
         } else $("import-progress").removeAttribute("value");
       },
       onImported: (image, file) => {
-        state.images.set(image.sha256, image);
+        setImage(image);
         if (file) sessionFiles.set(image.sha256, file);
         thumbnails.invalidate(image.sha256);
       },
@@ -929,13 +988,26 @@ $("manifest-input").onchange = (e) => {
 try {
   store = await openStore();
   const view = await store.get("settings", "gallery-view");
-  state.layout = view?.layout === "masonry" ? "masonry" : "grid";
+  state.layout = ["masonry", "virtual"].includes(view?.layout)
+    ? view.layout
+    : "grid";
   $("layout").value = state.layout;
-  for (const i of await store.all("images")) state.images.set(i.sha256, i);
-  for (const u of await store.all("users")) state.users.set(u.sha256, u);
+  for (const i of await store.all("images")) setImage(i);
+  for (const u of await store.all("users")) setUser(u);
   refreshCategories();
   render();
   if (!state.images.size) await loadStarter();
 } catch (e) {
   message(`无法启动存储：${e.message}`, true);
 }
+
+let viewportFrame;
+function renderViewport() {
+  if (state.layout !== "virtual") return;
+  cancelAnimationFrame(viewportFrame);
+  viewportFrame = requestAnimationFrame(render);
+}
+$("gallery-viewport").addEventListener("scroll", renderViewport, {
+  passive: true,
+});
+new ResizeObserver(renderViewport).observe($("gallery-viewport"));

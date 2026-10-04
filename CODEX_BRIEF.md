@@ -16,3 +16,7 @@
 v0.1 功能与本地验收已完成；先读 PROGRESS.md 的已知限制。当前技术栈为无运行时依赖的原生 ES modules + IndexedDB，Node.js 仅用于本地静态服务和开发测试。运行 `npm start`，开发检查 `npm test`、`npm run test:browser`。
 
 用户已将 v0.1 同步到 main，基线 `2081d75`。当前按新要求在 `codex/daily-mvp` 改进浏览、详情、搜索、收藏和标签的日常体验。保持 manifest/IndexedDB/JSON 兼容，不新增后端、数据库服务、账户、AI 或云同步。完成这五项后停止扩展；以 PROGRESS.md 记录为准。
+
+## 最新接手点（2026-10-04，优先于上述旧阶段）
+
+继续原仓库 codex/daily-mvp。fc2ded0 已完成 2.0 分类标签/批量管理；后续虚拟滚动与增量内存索引已接续完成，具体检查见 PROGRESS。test:browser 包含 virtual-browser.mjs 的 10,000 条合成索引验收。数据库版本 2、用户 JSON schema 1 保持不变。没有处理素材整理、901–1109 导入或日常浏览器数据。当前阶段完成，不自动扩展下一功能；先看 git status 和最新 PROGRESS 再接续。

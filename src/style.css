@@ -731,3 +731,24 @@ pre {
 .tag-filters input {
   max-width: 100%;
 }
+.virtual-viewport {
+  height: 70vh;
+  min-height: 320px;
+  overflow: auto;
+  overflow-anchor: none;
+}
+.grid[data-layout="virtual"] {
+  display: block;
+  position: relative;
+}
+.grid[data-layout="virtual"] .image-button {
+  height: 190px;
+  aspect-ratio: auto;
+}
+.grid[data-layout="virtual"] .card-meta {
+  height: 88px;
+  overflow: hidden;
+}
+.pager[hidden] {
+  display: none;
+}
